@@ -82,7 +82,7 @@ internal object CommandLoader {
                     .mapValues { it.value.sortedWith(CommandInfoComparator(parserTypes)) }
             }
 
-    class CommandInfoComparator(private val types: List<KType>) : Comparator<InternalCommandInfo> {
+    private class CommandInfoComparator(private val types: List<KType>) : Comparator<InternalCommandInfo> {
 
         override fun compare(first: InternalCommandInfo, second: InternalCommandInfo): Int =
             first.commandInfo.parameters
