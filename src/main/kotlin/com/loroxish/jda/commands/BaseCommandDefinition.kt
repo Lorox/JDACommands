@@ -10,14 +10,14 @@ abstract class BaseCommandDefinition {
         this.context = context
     }
 
-    fun reply(message: Message) {
+    protected fun reply(message: Message) {
         if (!::context.isInitialized) {
             return
         }
         context.channel.sendMessage(message).queue()
     }
 
-    fun reply(message: String) {
+    protected fun reply(message: String) {
         if (!::context.isInitialized) {
             return
         }
