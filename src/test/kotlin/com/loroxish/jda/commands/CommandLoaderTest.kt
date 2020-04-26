@@ -1,7 +1,7 @@
 package com.loroxish.jda.commands
 
 import com.google.inject.Inject
-import junit.framework.Assert.assertEquals
+import org.junit.Assert.assertEquals
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.mockito.Mock
@@ -34,7 +34,11 @@ internal class CommandLoaderTest {
         // Given
         `when`(reflections.getSubTypesOf(BaseCommandDefinition::class.java))
             .thenReturn(
-                setOf(TestDefinition::class.java, OtherTestDefinition::class.java, FilteredTestDefinition::class.java))
+                setOf(
+                    TestDefinition::class.java,
+                    OtherTestDefinition::class.java,
+                    TestDefinitionWithPrefix::class.java,
+                    FilteredTestDefinition::class.java))
 
         `when`(mockIntParser.type)
             .thenReturn(intType)
@@ -98,13 +102,19 @@ internal class CommandLoaderTest {
                                     OtherTestDefinition::class,
                                     OtherTestDefinition::class.functions.first{
                                         it.parameters.map { p -> p.type}.drop(1) == listOf(stringType, stringType) }))),
-                "otherCommand" to
-                        mapOf(0 to listOf(
-                            InternalCommandInfo(
-                                CommandInfo("otherCommand", listOf()),
-                                TestDefinition::class,
-                                TestDefinition::class.functions.first {
-                                    it.name == "otherCommand" && it.parameters.size == 1 })))),
+                    "otherCommand" to
+                            mapOf(0 to listOf(
+                                InternalCommandInfo(
+                                    CommandInfo("otherCommand", listOf()),
+                                    TestDefinition::class,
+                                    TestDefinition::class.functions.first {
+                                        it.name == "otherCommand" && it.parameters.size == 1 }))),
+                    "prefix test" to
+                            mapOf(0 to listOf(
+                                InternalCommandInfo(
+                                    CommandInfo("prefix test", listOf()),
+                                    TestDefinitionWithPrefix::class,
+                                    TestDefinitionWithPrefix::class.functions.first { it.name == "testCommand" })))),
                 mapOf("test" to
                         mapOf(1 to listOf(
                             InternalCommandInfo(
@@ -158,6 +168,13 @@ internal class CommandLoaderTest {
 
         @Command("test")
         fun testCommand(@Remainder string1: String, string2: String) { }
+    }
+
+    @Prefix("prefix")
+    private class TestDefinitionWithPrefix : BaseCommandDefinition() {
+
+        @Command("test")
+        fun testCommand() { }
     }
 
     private class FilteredTestDefinition(injectedThing: Int) : BaseCommandDefinition() {

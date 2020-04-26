@@ -40,14 +40,17 @@ internal object CommandLoader {
             .mapNotNull { func ->
                 func.findAnnotation<Command>()
                     ?.let {
+                        val name =
+                            definition.findAnnotation<Prefix>()?.let { prefix -> "${prefix.prefix} ${it.name}" } ?: it.name
                         val commandInfo =
                             CommandInfo(
-                                it.name,
+                                name,
                                 buildParameterInfo(func),
                                 func.findAnnotation<Summary>()?.summary,
                                 func.findAnnotation<Remarks>()?.remarks,
                                 checkFunctionHasRemainder(func.parameters))
-                        it.name to InternalCommandInfo(commandInfo, definition, func)
+
+                        name to InternalCommandInfo(commandInfo, definition, func)
                     }
             }
 
