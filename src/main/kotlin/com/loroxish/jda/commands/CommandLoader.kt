@@ -6,6 +6,8 @@ import kotlin.reflect.KClass
 import kotlin.reflect.KFunction
 import kotlin.reflect.KParameter
 import kotlin.reflect.KType
+import kotlin.reflect.KVisibility
+import kotlin.reflect.full.createInstance
 import kotlin.reflect.full.createType
 import kotlin.reflect.full.findAnnotation
 import kotlin.reflect.full.memberFunctions
@@ -21,10 +23,14 @@ internal object CommandLoader {
 
         val commandInfoPairs = reflections.getSubTypesOf(BaseCommandDefinition::class.java)
             .mapNotNull { it.kotlin }
+            .filter { it.visibility == KVisibility.PUBLIC }
             .filter {
-                it.constructors.any {
-                        constructor -> constructor.parameters.isEmpty()
-                        || constructor.findAnnotation<Inject>() != null } }
+                it.constructors.any { constructor ->
+                            constructor.visibility == KVisibility.PUBLIC
+                            && (constructor.parameters.isEmpty()
+                            || constructor.findAnnotation<Inject>() != null)
+                }
+            }
             .flatMap { buildCommandInfoPairs(it, parserTypes) }
 
         return CommandMapping(
@@ -34,25 +40,41 @@ internal object CommandLoader {
     }
 
     private fun buildCommandInfoPairs(definition: KClass<out BaseCommandDefinition>, parserTypes: List<KType>):
-            List<Pair<String, InternalCommandInfo>> =
-        definition.memberFunctions
+            List<Pair<String, InternalCommandInfo>> {
+
+        val prefix = definition.findAnnotation<Prefix>()?.prefix
+        val definitionPreconditions =
+            buildPreconditionEvaluators(definition.findAnnotation<Precondition>()?.evaluators ?: emptyArray())
+        return definition.memberFunctions
             .filter { func -> func.parameters.drop(1).all { parserTypes.contains(it.type) } }
             .mapNotNull { func ->
                 func.findAnnotation<Command>()
                     ?.let {
-                        val name =
-                            definition.findAnnotation<Prefix>()?.let { prefix -> "${prefix.prefix} ${it.name}" } ?: it.name
+                        val name = prefix?.let { prefix -> "$prefix ${it.name}" } ?: it.name
                         val commandInfo =
                             CommandInfo(
                                 name,
                                 buildParameterInfo(func),
                                 func.findAnnotation<Summary>()?.summary,
                                 func.findAnnotation<Remarks>()?.remarks,
-                                checkFunctionHasRemainder(func.parameters))
+                                checkFunctionForPreconditions(func, definitionPreconditions),
+                                checkFunctionHasRemainder (func.parameters))
 
                         name to InternalCommandInfo(commandInfo, definition, func)
                     }
             }
+    }
+
+    private fun buildPreconditionEvaluators(evaluatorTypes: Array<KClass<out PreconditionEvaluator>>):
+            Set<PreconditionEvaluator> =
+        evaluatorTypes
+            .filter { it.visibility == KVisibility.PUBLIC }
+            .filter {
+                it.constructors.any { constructor ->
+                    constructor.visibility == KVisibility.PUBLIC
+                            && constructor.parameters.isEmpty() } }
+            .map { it.createInstance() }
+            .toSet()
 
     private fun buildParameterInfo(func: KFunction<*>): List<ParameterInfo> =
         func.parameters.drop(1)
@@ -62,6 +84,12 @@ internal object CommandLoader {
                     it.type,
                     it.findAnnotation<Summary>()?.summary)
             }
+
+    private fun checkFunctionForPreconditions(
+        func: KFunction<*>, definitionPreconditions: Set<PreconditionEvaluator>
+    ): Set<PreconditionEvaluator> =
+        buildPreconditionEvaluators(func.findAnnotation<Precondition>()?.evaluators ?: emptyArray())
+            .union(definitionPreconditions)
 
     private fun checkFunctionHasRemainder(parameters: List<KParameter>): Boolean {
         val last = parameters.lastOrNull() ?: return false

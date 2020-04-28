@@ -30,14 +30,27 @@ internal class CommandHandler(
 
         val inputString = messageText.replaceFirst(COMMAND_PREFIX, "")
         when (val command = findCommand(inputString)) {
-            is CommandExecution.Error -> return event.channel.sendMessage("Debug: ${command.message}").queue()
-            is CommandExecution.SelectedCommand -> {
-                val definition = createDefinitionInstance(command.signature.clazz, event)
+            is SelectedCommand.Error -> return event.channel.sendMessage(command.message).queue()
+            is SelectedCommand.Success -> {
+
+                val context =
+                    CommandContext(
+                        event.jda,
+                        if (event.isFromGuild) event.guild else null,
+                        event.channel,
+                        event.author,
+                        event.message)
+
+                checkPreconditions(command.signature.commandInfo, context)?.let {
+                    return event.channel.sendMessage(it.message).queue()
+                }
+
+                val definition = createDefinitionInstance(command.signature.clazz, context)
                     ?: return event.channel
                         .sendMessage("Failed to create instance ${command.signature.clazz.simpleName}").queue()
 
                 try {
-                    command.signature.function.call(definition, *command.parameters)
+                    command.signature.function.call(definition, *command.parameters.toTypedArray())
                 } catch (e: InvocationTargetException) {
                     e.targetException?.run { message?.let { event.channel.sendMessage(it).queue() } }
                 }
@@ -45,57 +58,60 @@ internal class CommandHandler(
         }
     }
 
+    private fun checkPreconditions(
+        commandInfo: CommandInfo,
+        context: CommandContext
+    ): EvaluationResult.Failure? {
+
+        return commandInfo.preconditions
+            .map { it.checkCanExecute(context, commandInfo) }
+            .filterIsInstance<EvaluationResult.Failure>()
+            .firstOrNull()
+    }
+
     private fun createDefinitionInstance(
         clazz: KClass<out BaseCommandDefinition>,
-        event: MessageReceivedEvent
+        context: CommandContext
     ): BaseCommandDefinition? {
 
         try {
             val definition = injector.getInstance(clazz.java) ?: return null
-
-            definition.setContext(
-                CommandContext(
-                    event.jda,
-                    if (event.isFromGuild) event.guild else null,
-                    event.channel,
-                    event.author,
-                    event.message))
-
+            definition.setContext(context)
             return definition
         } catch (ex: ProvisionException) {
             return null
         }
     }
 
-    private fun findCommand(inputString: String): CommandExecution {
+    private fun findCommand(inputString: String): SelectedCommand {
 
         val commandParts = inputString.split("""\s+""".toRegex())
 
-        var error = CommandExecution.Error("Something went wrong")
+        var error = SelectedCommand.Error("Something went wrong")
 
         commandParts.indices
             .map { commandParts.subList(0, it + 1).joinToString(" ") to commandParts.drop(it + 1) }
             .forEach{ (commandString, parameterInputs) ->
                 var command = parseCommandMap(commandString, parameterInputs)
-                if (command is CommandExecution.Error) {
+                if (command is SelectedCommand.Error) {
                     error = command
                     command = parseRemainderCommandMap(commandString, parameterInputs)
                 }
-                if (command is CommandExecution.SelectedCommand) {
+                if (command is SelectedCommand.Success) {
                     return command
                 }
             }
         return error
     }
 
-    private fun parseCommandMap(commandString: String, parameterInputs: List<String>): CommandExecution {
+    private fun parseCommandMap(commandString: String, parameterInputs: List<String>): SelectedCommand {
 
-        val matchingCommands = commandMap[commandString] ?: return CommandExecution.Error("Command not found")
+        val matchingCommands = commandMap[commandString] ?: return SelectedCommand.Error("Command not found")
 
         val candidates = matchingCommands[parameterInputs.size]
 
         if (candidates.isNullOrEmpty()) {
-            return CommandExecution.Error("Incorrect number of parameters")
+            return SelectedCommand.Error("Incorrect number of parameters")
         }
 
         outer@ for (candidate in candidates) {
@@ -107,14 +123,14 @@ internal class CommandHandler(
                     argumentParsers[parameterTypes[i]]?.parseArgument(parameterInputs[i]) ?: continue@outer
                 parameters.add(parameterValue)
             }
-            return CommandExecution.SelectedCommand(candidate, parameters.toTypedArray())
+            return SelectedCommand.Success(candidate, parameters)
         }
-        return CommandExecution.Error("No command with matching parameter types")
+        return SelectedCommand.Error("No command with matching parameter types")
     }
 
-    private fun parseRemainderCommandMap(commandString: String, parameterInputs: List<String>): CommandExecution {
+    private fun parseRemainderCommandMap(commandString: String, parameterInputs: List<String>): SelectedCommand {
 
-        val matchingCommands = remainderCommandMap[commandString] ?: return CommandExecution.Error("Command not found")
+        val matchingCommands = remainderCommandMap[commandString] ?: return SelectedCommand.Error("Command not found")
 
         for (size in parameterInputs.size downTo 1) {
 
@@ -143,14 +159,14 @@ internal class CommandHandler(
                         break
                     }
                 }
-                return CommandExecution.SelectedCommand(candidate, parameters.toTypedArray())
+                return SelectedCommand.Success(candidate, parameters)
             }
         }
-       return CommandExecution.Error("Failed to parse remainder")
+       return SelectedCommand.Error("Failed to parse remainder")
     }
 
-    sealed class CommandExecution {
-        data class SelectedCommand(val signature: InternalCommandInfo, val parameters: Array<*>) : CommandExecution()
-        data class Error(val message: String) : CommandExecution()
+    private sealed class SelectedCommand {
+        data class Success(val signature: InternalCommandInfo, val parameters: List<*>) : SelectedCommand()
+        data class Error(val message: String) : SelectedCommand()
     }
 }

@@ -1,5 +1,6 @@
 package com.loroxish.jda.commands
 
+import com.google.common.annotations.VisibleForTesting
 import com.google.inject.Inject
 import org.junit.Assert.assertEquals
 import org.junit.Test
@@ -135,7 +136,8 @@ internal class CommandLoaderTest {
         assertEquals(expected, result)
     }
 
-    private class TestDefinition : BaseCommandDefinition() {
+    @VisibleForTesting
+    class TestDefinition : BaseCommandDefinition() {
 
         @Command("test")
         @Summary("A summary of the base command")
@@ -164,20 +166,23 @@ internal class CommandLoaderTest {
         fun otherCommand() { }
     }
 
-    private class OtherTestDefinition @Inject constructor(injectedThing: Int) : BaseCommandDefinition() {
+    @VisibleForTesting
+    class OtherTestDefinition @Inject constructor(injectedThing: Int) : BaseCommandDefinition() {
 
         @Command("test")
         fun testCommand(@Remainder string1: String, string2: String) { }
     }
 
+    @VisibleForTesting
     @Prefix("prefix")
-    private class TestDefinitionWithPrefix : BaseCommandDefinition() {
+    class TestDefinitionWithPrefix : BaseCommandDefinition() {
 
         @Command("test")
         fun testCommand() { }
     }
 
-    private class FilteredTestDefinition(injectedThing: Int) : BaseCommandDefinition() {
+    @VisibleForTesting
+    class FilteredTestDefinition(injectedThing: Int) : BaseCommandDefinition() {
 
         @Command("test")
         fun testCommand(int1: Int, int2: Int, int3: Int) { }

@@ -12,6 +12,7 @@ data class CommandInfo(
     val parameters: List<ParameterInfo>,
     val summary: String? = null,
     val remarks: String? = null,
+    val preconditions: Set<PreconditionEvaluator> = emptySet(),
     val hasRemainder: Boolean = false)
 
 data class ParameterInfo(
