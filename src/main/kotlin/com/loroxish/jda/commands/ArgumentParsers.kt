@@ -30,7 +30,7 @@ internal class UserParser(val jda: JDA) : ArgumentParser<User> {
     override fun parseArgument(arg: String): User? {
         val id =
             userPattern.matchEntire(arg)?.groupValues?.getOrNull(1)?.toLongOrNull() ?: return null
-        return jda.getUserById(id)
+        return jda.retrieveUserById(id).complete() ?: null
     }
 
     private companion object {
